@@ -90,6 +90,7 @@ flowchart LR
 |--------|-----|------|
 | JSON canonical signing | Easy to reproduce in n8n Code node | Payload key order must match `JSON.stringify` semantics |
 | Timestamp window | Limits replay window | Callers need reasonable clock sync |
+| Nonce memory for the same window | A captured signed request cannot be replayed inside the window either; a nonce is only burned after the signature verifies | Default store is per-process and capped at 10 000 entries (fails closed when full); multiple replicas need a shared `NonceStore` |
 | Injectable `fetch` | Tests without network | Production still needs retries and rate limits |
 | In-memory audit log | Simple hook for demos | Persist externally for production |
 

@@ -38,6 +38,8 @@ export {
   type SalesforceDealUpdateInput,
 } from './adapters/salesforce.js';
 
+export { InMemoryNonceStore, type NonceStore } from './nonceStore.js';
+
 export {
   ControlPlane,
   handleInboundAction,

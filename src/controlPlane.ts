@@ -3,6 +3,7 @@ import { validateAction } from './contracts.js';
 import { HubSpotAdapter, type HubSpotAdapterConfig } from './adapters/hubspot.js';
 import { PipedriveAdapter, type PipedriveAdapterConfig } from './adapters/pipedrive.js';
 import { SalesforceAdapter, type SalesforceAdapterConfig } from './adapters/salesforce.js';
+import { InMemoryNonceStore, type NonceStore } from './nonceStore.js';
 
 export interface ControlPlaneConfig {
   secret: string;
@@ -11,7 +12,12 @@ export interface ControlPlaneConfig {
   salesforce?: SalesforceAdapterConfig;
   auditLog?: AuditLogEntry[];
   maxAgeMs?: number;
+  /** Defaults to an in-memory store; use a shared one (Redis/Postgres) behind multiple replicas. */
+  nonceStore?: NonceStore;
 }
+
+const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
+const FUTURE_SKEW_MS = 60 * 1000;
 
 export type HandleInboundResult =
   | { success: true; result: NormalizedCrmResult }
@@ -43,11 +49,16 @@ export class ControlPlane {
   private readonly hubspot?: HubSpotAdapter;
   private readonly pipedrive?: PipedriveAdapter;
   private readonly salesforce?: SalesforceAdapter;
+  private readonly nonceStore: NonceStore;
 
   constructor(config: ControlPlaneConfig) {
     this.secret = config.secret;
     this.maxAgeMs = config.maxAgeMs;
     this.auditLog = config.auditLog;
+    // A nonce must be remembered for the whole window in which its timestamp is still accepted.
+    this.nonceStore =
+      config.nonceStore ??
+      new InMemoryNonceStore((config.maxAgeMs ?? DEFAULT_MAX_AGE_MS) + FUTURE_SKEW_MS);
     if (config.hubspot) {
       this.hubspot = new HubSpotAdapter(config.hubspot);
     }
@@ -80,6 +91,16 @@ export class ControlPlane {
     }
 
     const action = validated.action;
+
+    if (!(await this.nonceStore.checkAndRemember(action.nonce, Date.now()))) {
+      appendAudit(this.auditLog, {
+        at: new Date().toISOString(),
+        actionType: action.type,
+        success: false,
+        error: 'replayed nonce',
+      });
+      return { success: false, error: 'replayed nonce' };
+    }
 
     try {
       const result = await this.routeAction(action);
@@ -208,10 +229,13 @@ export class ControlPlane {
   }
 }
 
+const sharedNonceStore = new InMemoryNonceStore(DEFAULT_MAX_AGE_MS + FUTURE_SKEW_MS);
+
+/** Stateless helper; nonces are shared across calls unless `config.nonceStore` is provided. */
 export async function handleInboundAction(
   raw: InboundAction,
   config: ControlPlaneConfig,
 ): Promise<HandleInboundResult> {
-  const plane = new ControlPlane(config);
+  const plane = new ControlPlane({ nonceStore: sharedNonceStore, ...config });
   return plane.handleInboundAction(raw);
 }
