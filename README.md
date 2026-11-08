@@ -1,5 +1,7 @@
 # n8n-crm-control-plane
 
+[![CI](https://github.com/marchikx/n8n-crm-control-plane/actions/workflows/ci.yml/badge.svg)](https://github.com/marchikx/n8n-crm-control-plane/actions/workflows/ci.yml) ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+
 TypeScript library that verifies HMAC-signed inbound actions from n8n (or any webhook caller) and routes them to HubSpot, Pipedrive, or Salesforce adapters with a small audit trail.
 
 ## What it is for
